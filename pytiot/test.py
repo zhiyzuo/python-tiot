@@ -14,14 +14,11 @@ def read_test_data():
     ### citation-timestamp matrix ###
     ### timestamp list ###
 
-    TIMESTAMP = np.arange(1990, 2016)
-    C = np.empty((ids.size, 26), dtype=np.uint32)
-    timestamp = np.zeros(ids.size, dtype=np.uint32)
+    TIMESTAMP = np.arange(2010, 2016)
+    C = np.empty((ids.size, TIMESTAMP.size), dtype=np.uint32)
     for index in np.arange(ids.size):
         # citation #
         C[index, :] = d[ids[index]][3:-2]
-        # timestamp list #
-        timestamp[index] = np.where(TIMESTAMP == int(d[ids[index]][-1]))[0][0]
 
     ### author-doc matrix ###
     with open('./test_author.csv', 'rb') as f:
@@ -43,16 +40,18 @@ def read_test_data():
     import string
     from nltk import word_tokenize
     from nltk.corpus import stopwords
+    from nltk.stem.porter import PorterStemmer
 
+    ps = PorterStemmer()
     texts = np.array([d[ids[index]][1] + ' ' + d[ids[index]][0] for index in np.arange(ids.size)])
     stop = stopwords.words('english') + list(string.punctuation)
 
-    bow = [[item for item in word_tokenize(te.lower()) if item not in stop and len(item) > 2] for te in texts]
+    bow = [np.unique([ps.stem(item) for item in word_tokenize(te.lower()) if item not in stop and len(item) > 2]) for te in texts]
     nnz = sum([len(item) for item in bow])
 
     vocab = np.unique(np.array([v for doc in bow for v in doc]))
 
-    W = np.empty((nnz, 3), dtype=np.uint32)
+    W = np.empty((nnz, 2), dtype=np.uint32)
     index = 0
     for i in np.arange(ids.size): 
         for j in np.arange(len(bow[i])):
@@ -61,26 +60,26 @@ def read_test_data():
             W[index,0] = w_index
             # doc index
             W[index,1] = i
-            # timestamp index
-            W[index,2] = timestamp[i]
 
             index += 1
 
     return W, C, vocab, AD, authors, TIMESTAMP
 
 if __name__ == '__main__':
+    import sys
     import pickle
     from time import time
     from tiot import GibbsSamplerTIOT
     W, C, vocab, AD, authors, TIMESTAMP = read_test_data()
+    #sys.exit(0)
 
-    lda = GibbsSamplerTIOT(n_iter=200, K=10)
+    tiot = GibbsSamplerTIOT(n_iter=200, K=10)
     start = time()
-    theta, phi, psi, lambda_ = lda.fit(W, C, vocab, AD, authors, TIMESTAMP)
+    theta, phi, psi, lambda_ = tiot.fit(W, C, vocab, AD, authors, TIMESTAMP)
     end = time()
-    pickle.dump( lda, open( "lda.dump", "wb" ) )
+    pickle.dump( tiot, open( "tiot.dump", "wb" ) )
     print '---------------'
     print 'Elapsed time: %0.4f seconds' %(end-start)
     print '---------------'
-    lda.show_topics()
+    tiot.show_topics()
 
