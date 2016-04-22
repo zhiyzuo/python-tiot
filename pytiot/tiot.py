@@ -10,10 +10,10 @@ class GibbsSamplerTIOT(object):
 
     def fit(self, W, C, vocab, AD, author_list, timestamp_list):
         # {{{ run gibbs sampling
+        import sys
         import numpy as np
         from utils import cartesian
         from scipy.stats import poisson
-        from progress.bar import Bar
         '''
             W[:,0] -> word index
             W[:,1] -> document index
@@ -65,8 +65,8 @@ class GibbsSamplerTIOT(object):
         # 3. sample
         # {{{
         for iter_ in np.arange(1, self.n_iter+1):
-            print 'Iter %i' %iter_
-            bar = Bar('Processing', max=nnz)
+            print 'Iter %i...... (Total %i)' %(iter_, self.n_iter)
+            sys.stdout.flush()
             for i in np.arange(nnz):
 
                 # {{{ denominators
@@ -158,9 +158,6 @@ class GibbsSamplerTIOT(object):
                 t_states[iter_, i] = t
                 c_states[iter_, i] = np.random.poisson(lambda_[k, t])
 
-                bar.next()
-            bar.finish()
-
             # update lambda
             for k in np.arange(self.K):
                 for t in np.arange(T):
@@ -205,7 +202,6 @@ class GibbsSamplerTIOT(object):
         self.psi = psi
         self.lambda_ = lambda_
         self.z_samples = z_samples
-        print self.z_samples
         self.t_samples = t_samples
         self.a_samples = a_samples
         # }}}

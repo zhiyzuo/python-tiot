@@ -79,6 +79,8 @@ if __name__ == '__main__':
     theta, phi, psi, lambda_ = lda.fit(W, C, vocab, AD, authors, TIMESTAMP)
     end = time()
     pickle.dump( lda, open( "lda.dump", "wb" ) )
+    print '---------------'
     print 'Elapsed time: %0.4f seconds' %(end-start)
+    print '---------------'
     lda.show_topics()
 
