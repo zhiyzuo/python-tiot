@@ -8,7 +8,7 @@ class GibbsSamplerTIOT(object):
         self.beta = beta
         self.pi = pi
 
-    def fit(self, W, C, vocab, AD, author_list, timestamp_list):
+    def fit(self, W, C, vocab, AD, author_list, timestamp_list, verbose=True):
         # {{{ run gibbs sampling
         import sys
         import numpy as np
@@ -19,8 +19,8 @@ class GibbsSamplerTIOT(object):
             W[:,1] -> document index
             W[:,2] -> timestamp index
 
-            C: token-citation sparse matrix
-            C[i, t] -> citation count for the ith token at timestamp t
+            C: document-citation sparse matrix
+            C[i, t] -> citation count for the ith document at timestamp t
 
             AD: author-document sparse matrix
         '''
@@ -35,16 +35,20 @@ class GibbsSamplerTIOT(object):
         T = timestamp_list.size
 
         self.vocabulary = vocab
+        self.authors = author_list
+        self.timestamps = timestamp_list
 
-        # \theta, \phi, \psi
+        # author-topic
         theta = np.zeros((A, self.K), dtype=np.float_)
+        # topic-word
         phi = np.zeros((self.K, V), dtype=np.float_)
+        # topic-timestamp
         psi = np.zeros((self.K, T), dtype=np.float_)
 
-        # init all states to one above the max val
-        z_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + self.K + 1
-        a_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + A + 1
-        t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T + 1
+        # init to one above the max val
+        z_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + self.K
+        a_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + A
+        t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T
         c_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32)
 
         # 1.1 initialize topic assignment
@@ -53,26 +57,35 @@ class GibbsSamplerTIOT(object):
         # 1.2 initialize author assignment
         for i in np.arange(nnz):
             di = W[i, 1]
-            ti = W[i, 2]
             ad = AD[:, di].nonzero()[0]
             a_states[0, i] = np.random.choice(ad)
-            c_states[0, i] = np.random.poisson(np.mean(C[di,:]))
+            c_states[0, i] = np.random.poisson(C[di,:].mean())
+            #t_states[0 ,i] = W[i, 2]
 
-        # 2. initialize lambda matrix: avg. citation for words
-        avg_citation = np.mean(C)
+        # 2. initialize lambda matrix: avg. citation for documents
+        avg_citation = C.mean()
         lambda_ = np.random.poisson(avg_citation, size=(self.K, T))
         
+        k_range = np.arange(self.K)
+        t_range = np.arange(T)
+        a_range = np.arange(A)
+        v_range = np.arange(V)
+
         # 3. sample
         # {{{
         for iter_ in np.arange(1, self.n_iter+1):
-            print 'Iter %i...... (Total %i)' %(iter_, self.n_iter)
-            sys.stdout.flush()
+
+            if verbose:
+                print 'Iter %i...... (Total %i)' %(iter_, self.n_iter)
+                sys.stdout.flush()
+                
+            # sample each token sequentially
             for i in np.arange(nnz):
 
                 # {{{ denominators
                 den_author = np.zeros(A, dtype=np.float_)
-                for a in np.arange(A):
-                    for k in np.arange(self.K):
+                for a in a_range:
+                    for k in k_range:
                         # words that are assigned to topic k, excluding the current one
                         k_indices = np.append(np.where(z_states[iter_-1, i+1:]==k)[0] + (i+1),\
                                               np.where(z_states[iter_, :i]==k)[0])
@@ -83,8 +96,8 @@ class GibbsSamplerTIOT(object):
                 
                 den_timestamp = np.zeros(self.K, dtype=np.float_)
                 den_token = np.zeros(self.K, dtype=np.float_)
-                for k in np.arange(self.K):
-                    for t in np.arange(T):
+                for k in k_range:
+                    for t in t_range:
                         # words that are assigned to timestamp t, excluding the current one
                         t_indices = np.append(np.where(t_states[iter_-1, i+1:]==t)[0] + (i+1),\
                                               np.where(t_states[iter_, :i]==t)[0])
@@ -93,7 +106,7 @@ class GibbsSamplerTIOT(object):
                         den_timestamp[k] += n_k_t_i
                     den_timestamp[k] += T*self.pi
 
-                    for v in np.arange(V):
+                    for v in v_range:
                         # words that are tokens v, excluding the current one
                         v_indices = np.append(np.where(W[i+1:, 0]==v)[0] + (i+1),\
                                               np.where(W[:i, 0]==v)[0])
@@ -111,7 +124,7 @@ class GibbsSamplerTIOT(object):
                 # find its authors
                 ad = AD[:,di].nonzero()[0]
 
-                comb_list = cartesian((np.arange(T), np.arange(self.K), ad))
+                comb_list = cartesian((t_range, k_range, ad))
                 comb_p_list = np.zeros(comb_list.shape[0], dtype=np.float_)
                 # {{{ for each combination, obtain full conditional probability
                 for comb_index in np.arange(comb_p_list.size):
@@ -151,7 +164,7 @@ class GibbsSamplerTIOT(object):
                 comb_p_list = comb_p_list/comb_p_list.sum()
 
                 # sample for i-th word
-                comb_index = np.random.choice(np.arange(comb_list.shape[0]), replace=False, p=comb_p_list)
+                comb_index = np.random.choice(np.arange(comb_p_list.size), p=comb_p_list)
                 t, k, a = comb_list[comb_index]
                 z_states[iter_, i] = k
                 a_states[iter_, i] = a
@@ -159,16 +172,14 @@ class GibbsSamplerTIOT(object):
                 c_states[iter_, i] = np.random.poisson(lambda_[k, t])
 
             # update lambda
-            for k in np.arange(self.K):
-                for t in np.arange(T):
+            for k in k_range:
+                for t in t_range:
                     k_indices = np.where(z_states[iter_, :] == k)[0]
                     t_indices = np.where(t_states[iter_, :] == t)[0]
                     kt_indices = np.intersect1d(k_indices, t_indices)
                     # if no word is assigned to topic k and timestamp t, keep it as before
-                    try:
+                    if kt_indices.size:
                         lambda_[k,t] = 1./kt_indices.size * c_states[iter_, kt_indices].sum()
-                    except:
-                        continue
         # }}}
 
         # 4. update \theta, \phi, and \psi
@@ -177,23 +188,23 @@ class GibbsSamplerTIOT(object):
         a_samples = a_states[self.n_iter/2:, :]
         t_samples = t_states[self.n_iter/2:, :]
 
-        for a in np.arange(A):
+        for a in a_range:
             den = self.K * self.alpha + (a_samples==a).sum()
             a_x, a_y = np.where(a_samples==a)
-            for k in np.arange(self.K):
+            for k in k_range:
                 n_a_k = (z_samples[a_x, a_y] == k).sum()
                 theta[a,k] = float(n_a_k+self.alpha) / (den)
 
-        for k in np.arange(self.K):
+        for k in k_range:
             k_count = (z_samples==k).sum()
             den_v = V * self.beta + k_count
             den_t = T * self.pi + k_count
             k_x, k_y = np.where(z_samples==k)
-            for v in np.arange(V):
+            for v in v_range:
                 n_k_v = (W[k_y, 0]==v).sum()
                 phi[k,v] = float(n_k_v+self.beta) / den_v
 
-            for t in np.arange(T):
+            for t in t_range:
                 n_k_t = (t_samples[k_x,k_y]==t).sum()
                 psi[k,t] = float(n_k_t+self.pi) / den_t
 
@@ -219,17 +230,32 @@ class GibbsSamplerTIOT(object):
         topic_occurences = itemfreq(self.z_samples)
         self.topic_proportion = topic_occurences[:,1] / topic_occurences[:,1].astype(np.float).sum()
 
-        topic_words = []
-        for k in np.arange(self.K):
-            top_word_indices = np.argsort(-self.phi[k])[-top_n_words:]
-            topic_words.append(self.vocabulary[top_word_indices])
+        topic_words = self.vocabulary[np.argsort(-self.phi)[:, :top_n_words]]
 
         for k in np.argsort(-self.topic_proportion):
             print 'Topic %i (%0.4f): %s' %(k, self.topic_proportion[k], ', '.join(topic_words[k]))
 
-    def show_author_topics(self):
+    def show_author_topics(self, top_n=None):
         import numpy as np
-        pass
+
+        if top_n is None:
+            top_n = self.K
+        
+        A = self.theta.shape[0]
+        top_topic_indices = np.argsort(-self.theta)[:, :top_n]
+        for a in np.arange(A):
+            print '%s: %s' %(self.authors[a], ', '.join(top_topic_indices[a, :].astype(str)))
+
+    def show_topic_timestamps(self, top_t=NOne):
+        import numpy as np
+
+        T = self.timestamps.size
+        if top_n is None:
+            top_t = T
+
+        top_timestamps = self.timestamps[np.argsort(-self.psi)[:, :top_t]]
+        for k in np.arange(self.K):
+            print 'Topic %i: %s' %(k, ', '.join(top_timestamps[k, :]))
 
 
 class Preprocessor(object):
