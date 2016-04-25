@@ -253,7 +253,7 @@ class GibbsSamplerTIOT(object):
         import numpy as np
 
         T = self.timestamps.size
-        if top_n is None:
+        if top_t is None:
             top_t = T
 
         top_timestamps = self.timestamps[np.argsort(-self.psi)[:, :top_t]]
