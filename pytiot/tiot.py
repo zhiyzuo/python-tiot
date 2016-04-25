@@ -53,14 +53,14 @@ class GibbsSamplerTIOT(object):
 
         # 1.1 initialize topic assignment
         z_states[0, :] = np.random.choice(self.K, nnz)
-        t_states[0, :] = np.random.choice(T, nnz)
+        #t_states[0, :] = np.random.choice(T, nnz)
         # 1.2 initialize author assignment
         for i in np.arange(nnz):
             di = W[i, 1]
             ad = AD[:, di].nonzero()[0]
             a_states[0, i] = np.random.choice(ad)
             c_states[0, i] = np.random.poisson(C[di,:].mean())
-            #t_states[0 ,i] = W[i, 2]
+            t_states[0 ,i] = W[i, 2]
 
         # 2. initialize lambda matrix: avg. citation for documents
         avg_citation = C.mean()
@@ -123,8 +123,11 @@ class GibbsSamplerTIOT(object):
 
                 # find its authors
                 ad = AD[:,di].nonzero()[0]
+                # restrict t for a word to be from the timestamp it got published to present
+                td = np.arange(W[i, 2], T)
 
-                comb_list = cartesian((t_range, k_range, ad))
+                #comb_list = cartesian((t_range, k_range, ad))
+                comb_list = cartesian((td, k_range, ad))
                 comb_p_list = np.zeros(comb_list.shape[0], dtype=np.float_)
                 # {{{ for each combination, obtain full conditional probability
                 for comb_index in np.arange(comb_p_list.size):

@@ -109,9 +109,18 @@ if __name__ == '__main__':
         data = [line[0].split() for line in reader]
     
     WD = mat2wd(data)
-    nnz, W = sparse_mat_count(WD)
+    nnz, W2 = sparse_mat_count(WD)
     #sys.exit(0)
 
+    W = np.zeros((nnz, 3), dtype=int)
+    doc_time = np.array([0, 0, 3, 3], dtype=int)
+    for i in np.arange(nnz):
+        W[i,0] = W2[i,0]
+        W[i,1] = W2[i,1]
+        W[i,2] = doc_time[W[i,1]]
+    
+    print W
+    sys.exit(0)
     with open('test_mat.txt.clabel', 'r') as f:
         reader = csv.reader(f)
         vocab = np.asarray([line[0] for line in reader])
