@@ -246,7 +246,7 @@ class GibbsSamplerTIOT(object):
         for a in np.arange(A):
             print '%s: %s' %(self.authors[a], ', '.join(top_topic_indices[a, :].astype(str)))
 
-    def show_topic_timestamps(self, top_t=NOne):
+    def show_topic_timestamps(self, top_t=None):
         import numpy as np
 
         T = self.timestamps.size
