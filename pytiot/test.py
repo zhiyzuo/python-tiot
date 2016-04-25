@@ -116,13 +116,16 @@ if __name__ == '__main__':
         reader = csv.reader(f)
         vocab = np.asarray([line[0] for line in reader])
 
-    tiot = GibbsSamplerTIOT(n_iter=500, K=10)
+    n = int(sys.argv[1])
+    tiot = GibbsSamplerTIOT(n_iter=n, K=2)
     start = time()
     theta, phi, psi, lambda_ = tiot.fit(W, C, vocab, AD, authors, TIMESTAMP)
     end = time()
-    pickle.dump( tiot, open( "tiot.dump", "wb" ) )
+    pickle.dump( tiot, open( "tiot_%i.dump" %(n), "wb" ) )
     print '---------------'
     print 'Elapsed time: %0.4f seconds' %(end-start)
     print '---------------'
     tiot.show_topics()
+    tiot.show_author_topics()
+    tiot.show_topic_timestamps()
 
