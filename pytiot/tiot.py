@@ -255,7 +255,7 @@ class GibbsSamplerTIOT(object):
 
         top_timestamps = self.timestamps[np.argsort(-self.psi)[:, :top_t]]
         for k in np.arange(self.K):
-            print 'Topic %i: %s' %(k, ', '.join(top_timestamps[k, :]))
+            print 'Topic %i: %s' %(k, ', '.join(top_timestamps[k, :].astype(str)))
 
 
 class Preprocessor(object):
