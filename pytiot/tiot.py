@@ -51,6 +51,12 @@ class GibbsSamplerTIOT(object):
         t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T
         c_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32)
 
+        k_range = np.arange(self.K)
+        t_range = np.arange(T)
+        a_range = np.arange(A)
+        v_range = np.arange(V)
+
+
         # 1.1 initialize topic assignment
         z_states[0, :] = np.random.choice(self.K, nnz)
         #t_states[0, :] = np.random.choice(T, nnz)
@@ -63,14 +69,14 @@ class GibbsSamplerTIOT(object):
             t_states[0 ,i] = W[i, 2]
 
         # 2. initialize lambda matrix: avg. citation for documents
-        avg_citation = C.mean()
-        lambda_ = np.random.poisson(avg_citation, size=(self.K, T))
+        lambda_ = np.zeros((self.K, T), dtype=np.uint8)
+        for k in k_range:
+            k_indices = np.where(z[0, :] == k)[0]
+            d_indices = np.unique(W[k_indices, 1])
+            t_indices = np.unique(W[k_indices, 2])
+            for t in t_indices:
+                lambda_[k, t] = np.random.poisson(C[d_indices, t].sum())
         
-        k_range = np.arange(self.K)
-        t_range = np.arange(T)
-        a_range = np.arange(A)
-        v_range = np.arange(V)
-
         # 3. sample
         # {{{
         for iter_ in np.arange(1, self.n_iter+1):
