@@ -49,7 +49,6 @@ class GibbsSamplerTIOT(object):
         z_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + self.K
         a_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + A
         t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T
-        c_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32)
 
         k_range = np.arange(self.K)
         t_range = np.arange(T)
@@ -65,17 +64,17 @@ class GibbsSamplerTIOT(object):
             di = W[i, 1]
             ad = AD[:, di].nonzero()[0]
             a_states[0, i] = np.random.choice(ad)
-            c_states[0, i] = np.random.poisson(C[di,:].mean())
             t_states[0 ,i] = W[i, 2]
 
         # 2. initialize lambda matrix: avg. citation for documents
         lambda_ = np.zeros((self.K, T), dtype=np.uint8)
         for k in k_range:
-            k_indices = np.where(z[0, :] == k)[0]
+            k_indices = np.where(z_states[0, :] == k)[0]
             d_indices = np.unique(W[k_indices, 1])
             t_indices = np.unique(W[k_indices, 2])
             for t in t_indices:
-                lambda_[k, t] = np.random.poisson(C[d_indices, t].sum())
+                lambda_[k, t] = C[d_indices, t].mean()
+                #lambda_[k, t] = np.random.poisson(C[d_indices, t].mean())
         
         # 3. sample
         # {{{
@@ -184,7 +183,7 @@ class GibbsSamplerTIOT(object):
                 z_states[iter_, i] = k
                 a_states[iter_, i] = a
                 t_states[iter_, i] = t
-                c_states[iter_, i] = np.random.poisson(lambda_[k, t])
+                #c_states[iter_, i] = np.random.poisson(lambda_[k, t])
 
             # update lambda
             for k in k_range:
@@ -192,9 +191,10 @@ class GibbsSamplerTIOT(object):
                     k_indices = np.where(z_states[iter_, :] == k)[0]
                     t_indices = np.where(t_states[iter_, :] == t)[0]
                     kt_indices = np.intersect1d(k_indices, t_indices)
+                    d_indices = np.unique(W[kt_indices, 1])
                     # if no word is assigned to topic k and timestamp t, keep it as before
-                    if kt_indices.size:
-                        lambda_[k,t] = 1./kt_indices.size * c_states[iter_, kt_indices].sum()
+                    if d_indices.size > 0:
+                        lambda_[k, t] = C[d_indices, t].mean()
         # }}}
 
         # 4. update \theta, \phi, and \psi
