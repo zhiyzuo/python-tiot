@@ -111,6 +111,8 @@ if __name__ == '__main__':
     print 'Elapsed time: %0.4f seconds' %(end-start)
     print '---------------'
     tiot.show_topics()
+    print '---------------'
     tiot.show_author_topics()
+    print '---------------'
     tiot.show_topic_timestamps()
 

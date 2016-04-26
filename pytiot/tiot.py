@@ -183,7 +183,8 @@ class GibbsSamplerTIOT(object):
             for k in k_range:
                 k_indices = np.where(z_states[iter_, :] == k)[0]
                 for t in t_range:
-                    kt_indices = np.where(W[k_indices, 2] == t)[0]
+                    t_indices = np.where(W[:, 2] == t)[0]
+                    kt_indices = np.intersect1d(k_indices, t_indices)
                     d_indices = W[kt_indices, 1]
                     # if no word is assigned to topic k and timestamp t, keep it as before
                     if d_indices.size > 0:
@@ -193,8 +194,8 @@ class GibbsSamplerTIOT(object):
         # 4. obtain \theta, \phi, and \psi
 
         # burn-in: first half
-        z_samples = z_states[self.n_iter/2:, :]
-        a_samples = a_states[self.n_iter/2:, :]
+        z_samples = z_states[1:, :][self.n_iter/2:, :]
+        a_samples = a_states[1:, :][self.n_iter/2:, :]
 
         # author-topic
         theta = np.zeros((A, self.K), dtype=np.float_)
@@ -214,6 +215,7 @@ class GibbsSamplerTIOT(object):
             k_count = (z_samples==k).sum()
             den_v = V * self.beta + k_count
             den_t = T * self.pi + k_count
+            # x is iteration number, y is word index
             k_x, k_y = np.where(z_samples==k)
             for v in v_range:
                 n_k_v = (W[k_y, 0]==v).sum()
@@ -224,7 +226,8 @@ class GibbsSamplerTIOT(object):
                 psi[k,t] = float(n_k_t+self.pi) / den_t
 
                 # update lambda
-                kt_indices = np.where(W[k_y, 2]==t)[0]
+                t_indices = np.where(W[:, 2] == t)[0]
+                kt_indices = np.intersect1d(k_y, t_indices)
                 d_indices = W[kt_indices, 1]
                 # if no word is assigned to topic k and timestamp t, keep it as before
                 if d_indices.size > 0:
