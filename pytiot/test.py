@@ -13,7 +13,6 @@ def read_test_data():
     d = {item[0]:item[1:] for item in data[1:]}
 
     ### citation-timestamp matrix ###
-    ### timestamp list ###
 
     TIMESTAMP = np.arange(2010, 2016)
     C = np.empty((ids.size, TIMESTAMP.size), dtype=np.uint32)
@@ -68,40 +67,13 @@ def read_test_data():
 
     return C, AD, authors, TIMESTAMP
 
-def mat2wd(matfile):
-
-    num_doc = int(data[0][0])
-    num_word = int(data[0][1])
-    nnz = int(data[0][2])
-
-    WD = np.zeros((num_word, num_doc))
-    matf = matfile[1:]
-
-    for i in np.arange(num_doc):
-        l = map(int, matf[i])
-        for j in np.arange(start=0, stop=len(l), step=2):
-            index, occurrence = l[j], l[j+1]
-            WD[index-1, i] = occurrence
-    return WD
-
-def sparse_mat_count(WD):
-    nnz = int(WD.sum())
-    W = np.zeros((nnz, 2), dtype=np.int)
-    nnz_x, nnz_y = np.where(WD!=0)
-    start_index = 0
-    for i in np.arange(nnz_x.size):
-        word_occurence = int(WD[nnz_x[i], nnz_y[i]])
-        W[start_index:(start_index+word_occurence), 0] = int(nnz_x[i])
-        W[start_index:(start_index+word_occurence), 1] = int(nnz_y[i])
-        start_index += word_occurence
-    return nnz, W
-
 if __name__ == '__main__':
     import pickle
     import sys, csv
     import numpy as np
     from time import time
     from tiot import GibbsSamplerTIOT
+    from utils import mat2wd, sparse_mat_count
     C, AD, authors, TIMESTAMP = read_test_data()
 
     with open('test_mat.txt', 'r') as f:
@@ -113,14 +85,18 @@ if __name__ == '__main__':
     #sys.exit(0)
 
     W = np.zeros((nnz, 3), dtype=int)
-    doc_time = np.array([0, 0, 3, 3], dtype=int)
+
+    with open('test_time.csv', 'r') as f:
+        reader = csv.reader(f)
+        doc_time = np.array([line[0].strip() for line in reader])
+
+    doc_time = doc_time.astype(int) - doc_time.astype(int).min()
+
     for i in np.arange(nnz):
         W[i,0] = W2[i,0]
         W[i,1] = W2[i,1]
         W[i,2] = doc_time[W[i,1]]
     
-    print W
-    sys.exit(0)
     with open('test_mat.txt.clabel', 'r') as f:
         reader = csv.reader(f)
         vocab = np.asarray([line[0] for line in reader])

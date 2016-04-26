@@ -1,5 +1,33 @@
 import numpy as np
 
+def mat2wd(data):
+
+    num_doc = int(data[0][0])
+    num_word = int(data[0][1])
+    nnz = int(data[0][2])
+
+    WD = np.zeros((num_word, num_doc))
+    matf = data[1:]
+
+    for i in np.arange(num_doc):
+        l = map(int, matf[i])
+        for j in np.arange(start=0, stop=len(l), step=2):
+            index, occurrence = l[j], l[j+1]
+            WD[index-1, i] = occurrence
+    return WD
+
+def sparse_mat_count(WD):
+    nnz = int(WD.sum())
+    W = np.zeros((nnz, 2), dtype=np.int)
+    nnz_x, nnz_y = np.where(WD!=0)
+    start_index = 0
+    for i in np.arange(nnz_x.size):
+        word_occurence = int(WD[nnz_x[i], nnz_y[i]])
+        W[start_index:(start_index+word_occurence), 0] = int(nnz_x[i])
+        W[start_index:(start_index+word_occurence), 1] = int(nnz_y[i])
+        start_index += word_occurence
+    return nnz, W
+
 def cartesian(arrays, out=None):
     """
     Generate a cartesian product of input arrays.

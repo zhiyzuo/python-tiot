@@ -34,6 +34,7 @@ class GibbsSamplerTIOT(object):
         # number of timestamps
         T = timestamp_list.size
 
+        # save meta-info to this object
         self.vocabulary = vocab
         self.authors = author_list
         self.timestamps = timestamp_list
@@ -48,34 +49,41 @@ class GibbsSamplerTIOT(object):
         # init to one above the max val
         z_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + self.K
         a_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + A
-        t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T
+        #t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T
 
+        # create all needed sequences
         k_range = np.arange(self.K)
         t_range = np.arange(T)
         a_range = np.arange(A)
         v_range = np.arange(V)
 
 
-        # 1.1 initialize topic assignment
-        z_states[0, :] = np.random.choice(self.K, nnz)
+        # 1.1 initialize topic assignment randomly
+        z_states[0, :] = np.random.choice(self.K, nnz, True)
         #t_states[0, :] = np.random.choice(T, nnz)
+
         # 1.2 initialize author assignment
         for i in np.arange(nnz):
             di = W[i, 1]
             ad = AD[:, di].nonzero()[0]
             a_states[0, i] = np.random.choice(ad)
-            t_states[0 ,i] = W[i, 2]
+            #t_states[0 ,i] = W[i, 2]
 
-        # 2. initialize lambda matrix: avg. citation for documents
-        lambda_ = np.zeros((self.K, T), dtype=np.uint8)
+        # 2. initialize lambda matrix
+        lambda_ = np.zeros((self.K, T), dtype=np.uint32)
         for k in k_range:
             k_indices = np.where(z_states[0, :] == k)[0]
-            d_indices = np.unique(W[k_indices, 1])
+            d_indices = W[k_indices, 1]
             t_indices = np.unique(W[k_indices, 2])
             for t in t_indices:
                 lambda_[k, t] = C[d_indices, t].mean()
                 #lambda_[k, t] = np.random.poisson(C[d_indices, t].mean())
-        
+
+        # zeros set to overall mean
+        lam_x, lam_y =np.where(lambda_ == 0)
+        if lam_x.size:
+            lambda_[lam_x, lam_y] = C.mean()/float((lam_x.size))
+
         # 3. sample
         # {{{
         for iter_ in np.arange(1, self.n_iter+1):
@@ -102,10 +110,10 @@ class GibbsSamplerTIOT(object):
                 den_timestamp = np.zeros(self.K, dtype=np.float_)
                 den_token = np.zeros(self.K, dtype=np.float_)
                 for k in k_range:
+
                     for t in t_range:
                         # words that are assigned to timestamp t, excluding the current one
-                        t_indices = np.append(np.where(t_states[iter_-1, i+1:]==t)[0] + (i+1),\
-                                              np.where(t_states[iter_, :i]==t)[0])
+                        t_indices = np.append(np.where(W[:i,2] == t)[0], np.where(W[i+1:,2] == t)[0] + (i+1))
                         n_k_t_i = (z_states[iter_-1, t_indices[t_indices > i]] == k).sum() + \
                                   (z_states[iter_, t_indices[t_indices < i]] == k).sum()
                         den_timestamp[k] += n_k_t_i
@@ -123,46 +131,40 @@ class GibbsSamplerTIOT(object):
                 # }}}
 
                 v = W[i, 0]
+                t = W[i, 2]
                 di = W[i, 1]
                 ci = C[di, :]
 
                 # find its authors
                 ad = AD[:,di].nonzero()[0]
-                '''
-                # restrict t for a word to be from the timestamp it got published to present
-                td = np.arange(W[i, 2], T)
-                '''
 
-                # t to be sampled from same token's timestamps
-                v_indices = np.where(W[:, 0] == v)[0]
-                td = np.unique(W[v_indices, 2])
-
-                #comb_list = cartesian((t_range, k_range, ad))
-                comb_list = cartesian((td, k_range, ad))
+                comb_list = cartesian((k_range, ad))
                 comb_p_list = np.zeros(comb_list.shape[0], dtype=np.float_)
+
+                # excluding the current one
+                t_indices = np.append(np.where(W[i+1:, 2] == t)[0] + (i+1), np.where(W[:i, 2] == t)[0])
+                v_indices = np.append(np.where(W[i+1:, 0] == v)[0] + (i+1), np.where(W[:i, 0] == v)[0])
+
                 # {{{ for each combination, obtain full conditional probability
                 for comb_index in np.arange(comb_p_list.size):
 
                     comb = comb_list[comb_index]
-                    t, k, a = comb
+                    k, a = comb
 
-                    # find timestamp ti's topic assignments
-                    t_indices = np.append(np.where(t_states[iter_-1, i+1:]==t)[0] + (i+1),\
-                                          np.where(t_states[iter_, :i]==t)[0])
+                    # 1
                     n_k_t_i = (z_states[iter_-1, t_indices[t_indices > i]] == k).sum() + \
                               (z_states[iter_, t_indices[t_indices < i]] == k).sum()
                     p1 = (n_k_t_i + self.pi)/den_timestamp[k]
 
-                    # v is just wi
-                    v_indices = np.append(np.where(W[i+1:, 0]==v)[0] + (i+1),\
-                                          np.where(W[:i, 0]==v)[0])
+                    # 2
                     n_k_v_i = (z_states[iter_-1, v_indices[v_indices > i]] == k).sum() + \
                               (z_states[iter_, v_indices[v_indices < i]] == k).sum()
                     p2 = (n_k_v_i + self.beta)/den_token[k]
 
-                    # words that are assigned to topic k
-                    k_indices = np.append(np.where(z_states[iter_-1, i+1:]==k)[0] + (i+1),\
-                                          np.where(z_states[iter_, :i]==k)[0])
+                    # 3
+                    # excluding the current one
+                    k_indices = np.append(np.where(z_states[iter_-1, i+1:] == k)[0] + (i+1),\
+                                          np.where(z_states[iter_, :i] == k)[0])
                     n_a_k_i = (a_states[iter_-1, k_indices[k_indices > i]] == a).sum() + \
                               (a_states[iter_, k_indices[k_indices < i]] == a).sum()
                     p3 = (n_a_k_i + self.alpha)/den_author[a]
@@ -179,19 +181,17 @@ class GibbsSamplerTIOT(object):
 
                 # sample for i-th word
                 comb_index = np.random.choice(np.arange(comb_p_list.size), p=comb_p_list)
-                t, k, a = comb_list[comb_index]
+                k, a = comb_list[comb_index]
                 z_states[iter_, i] = k
                 a_states[iter_, i] = a
-                t_states[iter_, i] = t
-                #c_states[iter_, i] = np.random.poisson(lambda_[k, t])
 
             # update lambda
             for k in k_range:
+                k_indices = np.where(z_states[iter_, :] == k)[0]
                 for t in t_range:
-                    k_indices = np.where(z_states[iter_, :] == k)[0]
-                    t_indices = np.where(t_states[iter_, :] == t)[0]
+                    t_indices = np.where(W[:, 2] == t)[0]
                     kt_indices = np.intersect1d(k_indices, t_indices)
-                    d_indices = np.unique(W[kt_indices, 1])
+                    d_indices = W[kt_indices, 1]
                     # if no word is assigned to topic k and timestamp t, keep it as before
                     if d_indices.size > 0:
                         lambda_[k, t] = C[d_indices, t].mean()
@@ -201,7 +201,6 @@ class GibbsSamplerTIOT(object):
         # burn-in: first half
         z_samples = z_states[self.n_iter/2:, :]
         a_samples = a_states[self.n_iter/2:, :]
-        t_samples = t_states[self.n_iter/2:, :]
 
         for a in a_range:
             den = self.K * self.alpha + (a_samples==a).sum()
@@ -220,8 +219,15 @@ class GibbsSamplerTIOT(object):
                 phi[k,v] = float(n_k_v+self.beta) / den_v
 
             for t in t_range:
-                n_k_t = (t_samples[k_x,k_y]==t).sum()
+                n_k_t = (W[k_y, 2]==t).sum()
                 psi[k,t] = float(n_k_t+self.pi) / den_t
+
+                # update lambda
+                kt_indices = np.where(W[k_y, 2]==t)[0]
+                d_indices = W[kt_indices, 1]
+                # if no word is assigned to topic k and timestamp t, keep it as before
+                if d_indices.size > 0:
+                    lambda_[k, t] = C[d_indices, t].mean()
 
         self.theta = theta
         self.phi = phi
