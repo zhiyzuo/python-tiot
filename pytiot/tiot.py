@@ -123,8 +123,14 @@ class GibbsSamplerTIOT(object):
 
                 # find its authors
                 ad = AD[:,di].nonzero()[0]
+                '''
                 # restrict t for a word to be from the timestamp it got published to present
                 td = np.arange(W[i, 2], T)
+                '''
+
+                # t to be sampled from same token's timestamps
+                v_indices = np.where(W[:, 0] == v)[0]
+                td = np.unique(W[v_indices, 2])
 
                 #comb_list = cartesian((t_range, k_range, ad))
                 comb_list = cartesian((td, k_range, ad))
