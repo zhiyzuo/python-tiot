@@ -233,7 +233,7 @@ class GibbsSamplerTIOT(object):
                 psi[k,t] = float(n_k_t+self.pi) / den_t
 
                 # update lambda
-                t_x, t_y = np.where(t_samples == t)[0]
+                t_x, t_y = np.where(t_samples == t)
                 kt_indices = np.intersect1d(k_y, t_y)
                 d_indices = W[kt_indices, 1]
                 # if no word is assigned to topic k and timestamp t, keep it as before
