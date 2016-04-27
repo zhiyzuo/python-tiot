@@ -42,6 +42,7 @@ class GibbsSamplerTIOT(object):
         # init to one above the max val
         z_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + self.K
         a_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + A
+        t_states = np.zeros((self.n_iter+1, nnz), dtype=np.uint32) + T
 
         # create all needed sequences
         k_range = np.arange(self.K)
@@ -49,23 +50,25 @@ class GibbsSamplerTIOT(object):
         a_range = np.arange(A)
         v_range = np.arange(V)
 
-
         # 1.1 initialize topic assignment randomly
         z_states[0, :] = np.random.choice(self.K, nnz, True)
 
-        # 1.2 initialize author assignment
+        # 1.2 initialize author and timestamp assignment
         for i in np.arange(nnz):
+            t = W[i, 2]
             di = W[i, 1]
             ad = AD[:, di].nonzero()[0]
             a_states[0, i] = np.random.choice(ad)
+            t_states[0, i] = np.random.choice(np.arange(t, T))
 
         # 2. initialize lambda matrix
         lambda_ = np.zeros((self.K, T), dtype=np.uint32)
         for k in k_range:
             k_indices = np.where(z_states[0, :] == k)[0]
-            d_indices = W[k_indices, 1]
-            t_indices = np.unique(W[k_indices, 2])
-            for t in t_indices:
+            for t in np.arange(T):
+                t_indices = np.where(t_states[0, :] == t)[0]
+                kt_indices = np.intersect1d(t_indices, k_indices)
+                d_indices = W[kt_indices, 1]
                 lambda_[k, t] = C[d_indices, t].mean()
 
         # zeros set to overall mean
@@ -107,7 +110,8 @@ class GibbsSamplerTIOT(object):
 
                     for t in t_range:
                         # words that are assigned to timestamp t, excluding the current one
-                        t_indices = np.append(np.where(W[i+1:, 2] == t)[0] + (i+1), np.where(W[:i, 2] == t)[0])
+                        t_indices = np.append(np.where(t_states[iter_-1, i+1:]==t)[0] + (i+1),\
+                                              np.where(t_states[iter_, :i]==t)[0])
                         n_k_t_i = (z_states[iter_-1, t_indices[t_indices > i]] == k).sum() + \
                                   (z_states[iter_, t_indices[t_indices < i]] == k).sum()
                         den_timestamp[k] += n_k_t_i
@@ -131,20 +135,21 @@ class GibbsSamplerTIOT(object):
                 # find its authors
                 ad = AD[:,di].nonzero()[0]
 
-                comb_list = cartesian((k_range, ad))
+                comb_list = cartesian((np.arange(t, T), k_range, ad))
                 comb_p_list = np.zeros(comb_list.shape[0], dtype=np.float_)
 
                 # excluding the current one
-                t_indices = np.append(np.where(W[i+1:, 2] == t)[0] + (i+1), np.where(W[:i, 2] == t)[0])
                 v_indices = np.append(np.where(W[i+1:, 0] == v)[0] + (i+1), np.where(W[:i, 0] == v)[0])
 
                 # {{{ for each combination, obtain full conditional probability
                 for comb_index in np.arange(comb_p_list.size):
 
                     comb = comb_list[comb_index]
-                    k, a = comb
+                    t, k, a = comb
 
                     # 1
+                    t_indices = np.append(np.where(t_states[iter_-1, i+1:]==t)[0] + (i+1),\
+                                          np.where(t_states[iter_, :i]==t)[0])
                     n_k_t_i = (z_states[iter_-1, t_indices[t_indices > i]] == k).sum() + \
                               (z_states[iter_, t_indices[t_indices < i]] == k).sum()
                     p1 = (n_k_t_i + self.pi)/den_timestamp[k]
@@ -174,7 +179,8 @@ class GibbsSamplerTIOT(object):
 
                 # sample for i-th word
                 comb_index = np.random.choice(np.arange(comb_p_list.size), p=comb_p_list)
-                k, a = comb_list[comb_index]
+                t, k, a = comb_list[comb_index]
+                t_states[iter_, i] = t
                 z_states[iter_, i] = k
                 a_states[iter_, i] = a
             #}}} END for i-th TOKEN
@@ -183,7 +189,7 @@ class GibbsSamplerTIOT(object):
             for k in k_range:
                 k_indices = np.where(z_states[iter_, :] == k)[0]
                 for t in t_range:
-                    t_indices = np.where(W[:, 2] == t)[0]
+                    t_indices = np.where(t_states[iter_, :] == t)[0]
                     kt_indices = np.intersect1d(k_indices, t_indices)
                     d_indices = W[kt_indices, 1]
                     # if no word is assigned to topic k and timestamp t, keep it as before
@@ -196,6 +202,7 @@ class GibbsSamplerTIOT(object):
         # burn-in: first half
         z_samples = z_states[1:, :][self.n_iter/2:, :]
         a_samples = a_states[1:, :][self.n_iter/2:, :]
+        t_samples = t_states[1:, :][self.n_iter/2:, :]
 
         # author-topic
         theta = np.zeros((A, self.K), dtype=np.float_)
@@ -222,12 +229,12 @@ class GibbsSamplerTIOT(object):
                 phi[k,v] = float(n_k_v+self.beta) / den_v
 
             for t in t_range:
-                n_k_t = (W[k_y, 2]==t).sum()
+                n_k_t = (t_samples[k_x, k_y]==t).sum()
                 psi[k,t] = float(n_k_t+self.pi) / den_t
 
                 # update lambda
-                t_indices = np.where(W[:, 2] == t)[0]
-                kt_indices = np.intersect1d(k_y, t_indices)
+                t_x, t_y = np.where(t_samples == t)[0]
+                kt_indices = np.intersect1d(k_y, t_y)
                 d_indices = W[kt_indices, 1]
                 # if no word is assigned to topic k and timestamp t, keep it as before
                 if d_indices.size > 0:
@@ -239,6 +246,7 @@ class GibbsSamplerTIOT(object):
         self.lambda_ = lambda_
         self.z_samples = z_samples
         self.a_samples = a_samples
+        self.t_samples = t_samples
         # }}}
         return theta, phi, psi, lambda_
 
