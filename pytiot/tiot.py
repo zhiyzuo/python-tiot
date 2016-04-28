@@ -299,7 +299,7 @@ class GibbsSamplerTIOT(object):
         top_timestamps = np.argsort(-self.lambda_)[:, :top_t]
         print '****** Topical Impact by Citation ******'
         for k in np.arange(self.K):
-            print 'Topic %i: %s' %(k, ', '.join(top_timestamps[k,:].astype(str)))
+            print 'Topic %i: %s' %(k, ', '.join(self.timestamps[top_timestamps[k,:]].astype(str)))
 
 class Preprocessor(object):
 
